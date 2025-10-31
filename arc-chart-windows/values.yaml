@@ -1,0 +1,21 @@
+cargoCachePath: ""
+
+gha-runner-scale-set:
+  githubConfigUrl: ""
+  githubConfigSecret: github-secret
+  minRunners: 0
+  maxRunners: 0
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: windows
+      containers:
+      - name: runner
+        volumeMounts:
+        - name: cargo-cache
+          mountPath: C:\Users\ContainerAdministrator\.cargo\registry
+      volumes:
+      - name: cargo-cache
+        hostPath:
+          path: ""
+          type: DirectoryOrCreate

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: arc-runner
+description: ARC Runner Scale Set with cargo cache support
+version: 1.0.0
+dependencies:
+  - name: gha-runner-scale-set
+    version: 0.13.0
+    repository: oci://ghcr.io/actions/actions-runner-controller-charts
