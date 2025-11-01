@@ -1,4 +1,5 @@
-cargoCachePath: ""
+githubRepoOwner: ""
+githubRepoName: ""
 
 gha-runner-scale-set:
   githubConfigUrl: ""
@@ -7,13 +8,51 @@ gha-runner-scale-set:
   maxRunners: 0
   template:
     spec:
+      initContainers:
+      - name: setup-git-cache
+        image: alpine/git:latest
+        command:
+        - sh
+        - -c
+        - |
+          REPO_CACHE="/git-cache/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}.git"
+          mkdir -p $(dirname $REPO_CACHE)
+          
+          if [ -d "$REPO_CACHE" ]; then
+            cd $REPO_CACHE
+            git fetch --force --prune origin "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" || {
+              cd / && rm -rf $REPO_CACHE
+              git clone --mirror https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}.git $REPO_CACHE
+            }
+          else
+            git clone --mirror https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}.git $REPO_CACHE
+          fi
+        env:
+        - name: GITHUB_REPO_OWNER
+          value: ""
+        - name: GITHUB_REPO_NAME
+          value: ""
+        volumeMounts:
+        - name: git-cache
+          mountPath: /git-cache
+      
       containers:
       - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
         volumeMounts:
+        - name: git-cache
+          mountPath: /git-cache
+          readOnly: true
         - name: cargo-cache
-          mountPath: /usr/local/cargo/registry
+          mountPath: /cargo-cache
+      
       volumes:
       - name: cargo-cache
         hostPath:
-          path: ""
+          path: "/tmp/cargo-cache"
+          type: DirectoryOrCreate
+      - name: git-cache
+        hostPath:
+          path: "/tmp/git-cache"
           type: DirectoryOrCreate

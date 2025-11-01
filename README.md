@@ -60,119 +60,212 @@ kubectl create secret generic github-secret \
 
 ### 5. Download Chart Dependencies
 
-Before installing runner scale sets, download the chart dependencies:
+The deployment script will automatically download chart dependencies if needed, but you can do it manually:
 
-**For Linux/macOS runners:**
 ```bash
 cd arc-chart
 helm dependency update
 cd ..
-```
 
-**For Windows runners (future use):**
-```bash
+# For Windows (if needed)
 cd arc-chart-windows
 helm dependency update
 cd ..
 ```
 
-## Installing Runner Scale Sets
+## Deploying Runners
 
-This setup uses Helm wrapper charts that allow parameterized cargo cache paths while keeping configuration in version control.
+This repository includes a unified deployment script (`deploy-runner.sh`) that handles all the complexity of deploying runners across Linux, macOS, and Windows environments.
 
-### macOS
+### Features
 
-**First time installation:**
+✅ **Auto OS detection** - Detects Linux, macOS, or Windows (Git Bash/MSYS)
+✅ **Platform-specific configs** - Automatically generates correct YAML for each OS
+✅ **Smart defaults** - OS-specific cache paths and runner configurations
+✅ **Install or upgrade** - Single script handles both modes
+✅ **Validation** - Pre-flight checks before execution
+✅ **Conditional arguments** - Only updates values you explicitly provide
+✅ **Interactive confirmation** - Shows command before executing
+✅ **Dry-run mode** - See what would happen without executing
+
+### Quick Start
+
+#### Install a new runner:
+
 ```bash
-helm install mac-mini-runners ./arc-chart \
-  --namespace arc-runners \
-  --set gha-runner-scale-set.githubConfigUrl="https://github.com/YOUR_USER/YOUR_REPO" \
-  --set gha-runner-scale-set.githubConfigSecret=github-secret \
-  --set cargoCachePath=/Users/$(whoami)/.cargo-cache
+./deploy-runner.sh mac-mini-runners \
+  --github-url https://github.com/MoosicBox/MoosicBox \
+  --repo-owner MoosicBox \
+  --repo-name MoosicBox
 ```
 
-**Updating existing installation:**
+This will:
+- Use OS-appropriate default cache paths
+- Create a new Helm release named `mac-mini-runners`
+- Configure Git repository caching for faster checkouts
+- Configure Cargo dependency caching
+
+#### Upgrade an existing runner:
+
 ```bash
-helm upgrade mac-mini-runners ./arc-chart \
-  --namespace arc-runners \
-  --reuse-values \
-  --set cargoCachePath=/Users/$(whoami)/.cargo-cache
+# Upgrade without changing anything
+./deploy-runner.sh mac-mini-runners --upgrade
+
+# Upgrade and change cache paths
+./deploy-runner.sh mac-mini-runners --upgrade \
+  --cargo-cache-path /new/path/cargo \
+  --git-cache-path /new/path/git
+
+# Upgrade and change repository
+./deploy-runner.sh mac-mini-runners --upgrade \
+  --repo-owner NewOrg \
+  --repo-name NewRepo
 ```
 
-**Recommended cache path**: `/Users/USERNAME/.cargo-cache`
+### Script Usage
 
-### Ubuntu/Linux
+```
+Usage: 
+  ./deploy-runner.sh <release-name> [--upgrade] [options]
 
-**First time installation:**
-```bash
-helm install ubuntu-runners ./arc-chart \
-  --namespace arc-runners \
-  --set gha-runner-scale-set.githubConfigUrl="https://github.com/YOUR_USER/YOUR_REPO" \
-  --set gha-runner-scale-set.githubConfigSecret=github-secret \
-  --set cargoCachePath=/home/$(whoami)/.cargo-cache
+INSTALL MODE (default):
+  Required:
+    <release-name>              Helm release name (e.g., mac-mini-runners)
+    --github-url URL            GitHub repository URL
+    --repo-owner OWNER          GitHub repository owner
+    --repo-name NAME            GitHub repository name
+  
+  Optional:
+    --cargo-cache-path PATH     Cargo cache path (default: OS-specific)
+    --git-cache-path PATH       Git cache path (default: OS-specific)
+    --namespace NS              Kubernetes namespace (default: arc-runners)
+    --dry-run                   Show command without executing
+
+UPGRADE MODE:
+  Required:
+    <release-name>              Helm release name to upgrade
+    --upgrade                   Enable upgrade mode
+  
+  Optional:
+    --github-url URL            Update GitHub repository URL
+    --repo-owner OWNER          Update repository owner
+    --repo-name NAME            Update repository name
+    --cargo-cache-path PATH     Update cargo cache path
+    --git-cache-path PATH       Update git cache path
+    --namespace NS              Kubernetes namespace (default: arc-runners)
+    --dry-run                   Show command without executing
 ```
 
-**Updating existing installation:**
+### Default Cache Paths
+
+The script automatically sets appropriate default cache paths based on your OS:
+
+- **macOS**: 
+  - Cargo: `/Users/USERNAME/.cargo-cache`
+  - Git: `/Users/USERNAME/.git-cache`
+- **Linux**: 
+  - Cargo: `/home/USERNAME/.cargo-cache`
+  - Git: `/var/lib/arc-runner/git-cache`
+- **Windows** (Git Bash/MSYS): 
+  - Cargo: `C:\cargo-cache`
+  - Git: `C:\arc-runner\git-cache`
+
+### Examples
+
+**Install on macOS with defaults:**
 ```bash
-helm upgrade ubuntu-runners ./arc-chart \
-  --namespace arc-runners \
-  --reuse-values \
-  --set cargoCachePath=/home/$(whoami)/.cargo-cache
+./deploy-runner.sh mac-mini-runners \
+  --github-url https://github.com/MoosicBox/MoosicBox \
+  --repo-owner MoosicBox \
+  --repo-name MoosicBox
 ```
 
-**Recommended cache path**: `/home/USERNAME/.cargo-cache`
-
-### Windows (Future Use)
-
-**First time installation:**
+**Install on Ubuntu with custom paths:**
 ```bash
-helm install windows-runners ./arc-chart-windows \
-  --namespace arc-runners \
-  --set gha-runner-scale-set.githubConfigUrl="https://github.com/YOUR_USER/YOUR_REPO" \
-  --set gha-runner-scale-set.githubConfigSecret=github-secret \
-  --set cargoCachePath=C:\cargo-cache
+./deploy-runner.sh ubuntu-runners \
+  --github-url https://github.com/MoosicBox/MoosicBox \
+  --repo-owner MoosicBox \
+  --repo-name MoosicBox \
+  --cargo-cache-path /mnt/ssd/cargo-cache \
+  --git-cache-path /mnt/ssd/git-cache
 ```
 
-**Updating existing installation:**
+**Install on Windows:**
 ```bash
-helm upgrade windows-runners ./arc-chart-windows \
-  --namespace arc-runners \
-  --reuse-values \
-  --set cargoCachePath=C:\cargo-cache
+# From Git Bash or MSYS terminal
+./deploy-runner.sh windows-runners \
+  --github-url https://github.com/MoosicBox/MoosicBox \
+  --repo-owner MoosicBox \
+  --repo-name MoosicBox
+
+# With custom paths
+./deploy-runner.sh windows-runners \
+  --github-url https://github.com/MoosicBox/MoosicBox \
+  --repo-owner MoosicBox \
+  --repo-name MoosicBox \
+  --cargo-cache-path "C:\\my-caches\\cargo" \
+  --git-cache-path "C:\\my-caches\\git"
 ```
 
-**Note**: Windows runners in kind require additional setup and may be better run directly on Windows hosts.
+**Note for Windows:** The script automatically:
+- Uses Windows Server Core container for initContainer
+- Uses PowerShell scripts instead of bash
+- Configures Windows paths (`C:\...`) 
+- Adds `nodeSelector` for Windows nodes
+- Uses correct runner command (`C:\actions-runner\run.cmd`)
+
+**Upgrade existing runner (no changes):**
+```bash
+./deploy-runner.sh mac-mini-runners --upgrade
+```
+
+**Upgrade and update cache paths:**
+```bash
+./deploy-runner.sh mac-mini-runners --upgrade \
+  --cargo-cache-path /new/cargo/path
+```
+
+**Dry-run to preview changes:**
+```bash
+./deploy-runner.sh mac-mini-runners --upgrade \
+  --cargo-cache-path /new/path \
+  --dry-run
+```
 
 ## Chart Structure
 
-This setup uses wrapper Helm charts to enable templated configuration:
-
 ```
-act/
+.
 ├── arc-chart/              # Linux/macOS runner chart
-│   ├── Chart.yaml         # Defines dependency on ARC
-│   ├── values.yaml        # Default values with cargo cache config
-│   └── templates/
-│       └── _helpers.tpl   # Template helpers
+│   ├── Chart.yaml         # Chart metadata and dependencies
+│   ├── values.yaml        # Default configuration values
+│   └── charts/            # Downloaded dependencies
 ├── arc-chart-windows/     # Windows runner chart
 │   ├── Chart.yaml
 │   ├── values.yaml
-│   └── templates/
-│       └── _helpers.tpl
+│   └── charts/
+├── deploy-runner.sh       # Unified deployment script
 └── README.md
 ```
 
-The wrapper charts:
+The charts are wrapper charts that:
 - Reference the official ARC chart as a dependency
-- Allow parameterized `cargoCachePath` via `--set`
-- Keep machine-specific paths out of version control
-- Share configuration across Linux/macOS or Windows
+- Provide sensible defaults for cache paths
+- Include initContainers for Git repository caching
+- Support both Linux/macOS and Windows environments
 
 ## Configuring Runner Scale Settings
 
-You can configure min/max runners when installing or upgrading:
+You can configure min/max runners by directly editing the `values.yaml` file or by using helm's `--set` flag:
 
 ```bash
+# Edit values.yaml
+vim arc-chart/values.yaml
+# Change minRunners and maxRunners values
+
+# Or override during install/upgrade
+./deploy-runner.sh mac-mini-runners --upgrade
+# Then manually add --set if needed:
 helm upgrade mac-mini-runners ./arc-chart \
   --namespace arc-runners \
   --reuse-values \
@@ -185,7 +278,7 @@ helm upgrade mac-mini-runners ./arc-chart \
 
 ## Using Runners in Workflows
 
-Reference the runner by its helm release name:
+Reference the runner by its Helm release name:
 
 ```yaml
 jobs:
@@ -224,33 +317,54 @@ Verify in GitHub:
 - Go to repo → Settings → Actions → Runners
 - You should see your runner scale sets listed
 
-## Cargo Cache Configuration
+## Cache Configuration
 
-The wrapper charts include shared Cargo registry cache setup. This prevents redundant dependency downloads across runner pods on the same machine.
+### Cargo Cache
 
-### How it works:
+The wrapper charts include shared Cargo registry cache setup to prevent redundant dependency downloads:
 
 - A directory on your host machine is mounted into each runner pod at `/usr/local/cargo/registry`
 - Cargo downloads dependencies to this shared location
 - All runner pods on the same machine reuse the same cache
 - Cache persists across runner pod restarts
 
-### Cache locations:
+### Git Repository Cache
 
-The `cargoCachePath` parameter should point to a persistent directory on your host:
-- **macOS**: `/Users/USERNAME/.cargo-cache`
-- **Linux**: `/home/USERNAME/.cargo-cache`
-- **Windows**: `C:\cargo-cache`
+The wrapper charts include Git repository caching to dramatically speed up checkout:
 
-### Why use wrapper charts?
+**How it works:**
+- Before each runner starts, an initContainer updates a Git mirror cache on the host
+- The mirror cache uses `git fetch --force --prune` to handle force pushes gracefully
+- The cache is mounted read-only into runner containers
+- `actions/checkout@v4` automatically detects and uses the cache via Git's `--reference-if-able`
+- Only new/changed Git objects are downloaded
+- Full repository history is still available to workflows
+- Cache is shared across all runners on the same host
 
-This approach allows you to:
-1. Keep chart configuration in git (the `arc-chart/` directories)
-2. Parameterize machine-specific paths (via `--set cargoCachePath=...`)
-3. Share the same chart template across multiple machines
-4. Use proper Helm templating syntax
+**Platform-specific implementation:**
+- **Linux/macOS**: Uses `alpine/git:latest` with bash scripts
+- **Windows**: Uses `mcr.microsoft.com/windows/servercore:ltsc2022` with PowerShell scripts
+- Both achieve the same result with platform-appropriate tooling
+
+**Benefits:**
+- **Faster checkouts**: Only fetch new commits and changed files
+- **Reduced bandwidth**: Reuse Git objects (commits, trees, blobs) already cached
+- **Force-push safe**: Handles repository force pushes without corruption
+- **Pure builds**: Workflows still get full history and clean checkouts
+- **Transparent**: No workflow changes needed
+- **Cross-platform**: Works on Linux, macOS, and Windows runners
 
 ## Troubleshooting
+
+### Script reports missing required arguments
+
+Make sure you provide all required arguments for install mode:
+```bash
+./deploy-runner.sh my-runner \
+  --github-url https://github.com/Owner/Repo \
+  --repo-owner Owner \
+  --repo-name Repo
+```
 
 ### No listener pod appearing
 
@@ -271,24 +385,19 @@ kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-contr
 2. Verify `maxRunners` isn't set too low
 3. Check listener pod logs for errors
 
+### Git cache not working
+
+1. Check that `githubRepoOwner` and `githubRepoName` are set correctly
+2. Verify the initContainer completed successfully: `kubectl get pods -n arc-runners`
+3. Check initContainer logs: `kubectl logs -n arc-runners <pod-name> -c setup-git-cache`
+4. Ensure the host path for git cache is writable by the runner pods
+
 ### Chart dependency errors
 
-If you see errors about missing dependencies, run:
+The deploy script will automatically update dependencies, but you can manually update:
 ```bash
 cd arc-chart
 helm dependency update
-```
-
-## Updating Configuration
-
-To update an existing runner scale set with new settings:
-
-```bash
-helm upgrade mac-mini-runners ./arc-chart \
-  --namespace arc-runners \
-  --reuse-values \
-  --set cargoCachePath=/Users/USERNAME/.cargo-cache \
-  --set gha-runner-scale-set.minRunners=2
 ```
 
 ## Cleanup
@@ -307,3 +416,28 @@ kubectl delete namespace arc-systems
 kubectl delete namespace arc-runners
 kind delete cluster --name arc
 ```
+
+## Advanced: Direct Helm Usage
+
+If you prefer to use Helm directly instead of the deploy script, you can:
+
+```bash
+# Install
+helm install mac-mini-runners ./arc-chart \
+  --namespace arc-runners \
+  --set gha-runner-scale-set.githubConfigUrl="https://github.com/MoosicBox/MoosicBox" \
+  --set githubRepoOwner=MoosicBox \
+  --set githubRepoName=MoosicBox \
+  --set gha-runner-scale-set.template.spec.initContainers[0].env[0].value=MoosicBox \
+  --set gha-runner-scale-set.template.spec.initContainers[0].env[1].value=MoosicBox \
+  --set gha-runner-scale-set.template.spec.volumes[0].hostPath.path=/Users/me/.cargo-cache \
+  --set gha-runner-scale-set.template.spec.volumes[1].hostPath.path=/Users/me/.git-cache
+
+# Upgrade
+helm upgrade mac-mini-runners ./arc-chart \
+  --namespace arc-runners \
+  --reuse-values \
+  --set gha-runner-scale-set.template.spec.volumes[0].hostPath.path=/new/path
+```
+
+However, the `deploy-runner.sh` script is recommended as it handles all this complexity for you.

@@ -1,4 +1,5 @@
-cargoCachePath: ""
+githubRepoOwner: ""
+githubRepoName: ""
 
 gha-runner-scale-set:
   githubConfigUrl: ""
@@ -9,13 +10,58 @@ gha-runner-scale-set:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+      
+      initContainers:
+      - name: setup-git-cache
+        image: mcr.microsoft.com/windows/servercore:ltsc2022
+        command:
+        - powershell.exe
+        - -Command
+        - |
+          $ErrorActionPreference = "Stop"
+          $repoCache = "C:\git-cache\$env:GITHUB_REPO_OWNER\$env:GITHUB_REPO_NAME.git"
+          
+          New-Item -ItemType Directory -Force -Path (Split-Path $repoCache) | Out-Null
+          
+          if (Test-Path $repoCache) {
+            Push-Location $repoCache
+            try {
+              git fetch --force --prune origin "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+            } catch {
+              Pop-Location
+              Remove-Item -Recurse -Force $repoCache
+              git clone --mirror "https://github.com/$env:GITHUB_REPO_OWNER/$env:GITHUB_REPO_NAME.git" $repoCache
+            }
+            Pop-Location
+          } else {
+            git clone --mirror "https://github.com/$env:GITHUB_REPO_OWNER/$env:GITHUB_REPO_NAME.git" $repoCache
+          }
+        env:
+        - name: GITHUB_REPO_OWNER
+          value: ""
+        - name: GITHUB_REPO_NAME
+          value: ""
+        volumeMounts:
+        - name: git-cache
+          mountPath: C:\git-cache
+      
       containers:
       - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["C:\\actions-runner\\run.cmd"]
         volumeMounts:
         - name: cargo-cache
           mountPath: C:\Users\ContainerAdministrator\.cargo\registry
+        - name: git-cache
+          mountPath: C:\git-cache
+          readOnly: true
+          
       volumes:
       - name: cargo-cache
         hostPath:
-          path: ""
+          path: "C:\\cargo-cache"
+          type: DirectoryOrCreate
+      - name: git-cache
+        hostPath:
+          path: "C:\\git-cache"
           type: DirectoryOrCreate
